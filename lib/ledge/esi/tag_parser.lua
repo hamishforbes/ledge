@@ -52,7 +52,7 @@ function _M.open_pattern(tag)
         return "<(!--esi)"
     else
         -- $1: the tag name, $2 the closing characters, e.g. "/>" or ">"
-        return "<(" .. tag .. [[)(?:\s*(?:[a-z]+=\".+?(?<!\\)\"))?[^>]*?(?:\s*)(\/>|>)?]]
+        return "<(" .. tag .. [[)(?:\s*(?:[_\-a-z]+=\".+?(?<!\\)\"))*[^>]*?(?:\s*)(\/>|>)?]]
     end
 end
 
