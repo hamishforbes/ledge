@@ -355,7 +355,6 @@ GET /purge_ssl_entry
 TEST 9 Revalidated: primed
 
 === TEST 10: ESI include fragment
---- log_level: debug
 --- http_config eval: $::HttpConfig
 --- config
 listen unix:$TEST_NGINX_HTML_DIR/nginx-ssl.sock ssl;
@@ -400,6 +399,8 @@ $::ExampleKey
 $::ExampleCert"
 --- request
 GET /esi_ssl_entry
+--- more_headers
+Host: example.com
 --- raw_response_headers_unlike: Surrogate-Control: content="ESI/1.0\"\r\n
 --- response_body
 1
@@ -409,3 +410,61 @@ FRAGMENT: 2|https
 3FRAGMENT: 3|http
 --- no_error_log
 [error]
+
+=== TEST 11: ESI include fragment ssl-verify attribute
+--- log_level: debug
+--- http_config eval: $::HttpConfig
+--- config
+listen unix:$TEST_NGINX_HTML_DIR/nginx-ssl.sock ssl;
+keepalive_timeout 0; # Disable keepalives so we have to handshake on every connection
+location /esi_ssl_entry {
+    rewrite ^(.*)_entry$ $1_prx break;
+    content_by_lua_block {
+        local res, err = do_ssl(nil)
+        ngx.print(res:read_body())
+    }
+}
+location /esi_ssl_prx {
+    rewrite ^(.*)_prx$ $1 break;
+    content_by_lua_block {
+        require("ledge").create_handler({
+            esi_enabled = true,
+        }):run()
+    }
+}
+location /fragment_1 {
+    content_by_lua_block {
+        ngx.say("FRAGMENT: ", ngx.req.get_uri_args()["a"] or "", "|", ngx.var.scheme)
+    }
+}
+location /esi_ssl {
+    default_type text/html;
+    content_by_lua_block {
+        ngx.header["Surrogate-Control"] = [[content="ESI/1.0"]]
+        ngx.say("1")
+        ngx.print([[<esi:include src="/fragment_1?a=1" />]])
+        ngx.say("2")
+        ngx.print([[<esi:include src="/fragment_1?a=2" ssl-verify="false" />]])
+        ngx.say("3")
+        ngx.print([[<esi:include src="/fragment_1?a=3" ssl-verify="true" />]])
+
+    }
+}
+--- user_files eval
+">>> rootca.pem
+$::RootCACert
+>>> example.com.key
+$::ExampleKey
+>>> example.com.crt
+$::ExampleCert"
+--- request
+GET /esi_ssl_entry
+--- raw_response_headers_unlike: Surrogate-Control: content="ESI/1.0\"\r\n
+--- response_body
+1
+2
+FRAGMENT: 2|https
+3
+
+--- error_log
+certificate host mismatch
