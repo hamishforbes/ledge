@@ -456,7 +456,12 @@ function _M.esi_fetch_include(self, include_tag, buffer_size)
             return nil
         else
             if scheme == "https" then
-                local ok, err = httpc:ssl_handshake(false, host, false)
+                local ssl_verify = true
+                if str_find(include_tag, [[ssl-verify="false"]], 1, true) ~= nil then
+                    ssl_verify = false
+                end
+
+                local ok, err = httpc:ssl_handshake(false, host, ssl_verify)
                 if not ok then
                     ngx_log(ngx_ERR, "ssl handshake failed: ", err)
                     return nil
@@ -824,9 +829,10 @@ function _M.get_process_filter(self, res)
                         local re_ctx = { pos = 1 }
                         local yield_from = 1
                         repeat
+                            -- TODO: What if the attribute order is different?
                             local from, to, err = ngx_re_find(
                                 chunk,
-                                [[<esi:include\s*src="[^"]+"\s*/>]],
+                                [[<esi:include\s*(src="[^"]+"\s*(ssl-verify="(true|false)"\s*)?/>]],
                                 "oj",
                                 re_ctx
                             )
