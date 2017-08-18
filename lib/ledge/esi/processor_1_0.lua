@@ -431,9 +431,11 @@ function _M.esi_fetch_include(self, include_tag, buffer_size)
         -- If our upstream matches the current host, use server_addr /
         -- server_port instead. This keeps the connection local to this node
         -- where possible.
+        local ssl_verify = true
         if upstream == ngx_var.http_host then
             upstream = ngx_var.server_addr
             port = ngx_var.server_port
+            ssl_verify = false -- Disable ssl verify by default on loopback
         end
 
         local config = self.handler.config
@@ -456,9 +458,10 @@ function _M.esi_fetch_include(self, include_tag, buffer_size)
             return nil
         else
             if scheme == "https" then
-                local ssl_verify = true
                 if str_find(include_tag, [[ssl-verify="false"]], 1, true) ~= nil then
                     ssl_verify = false
+                elseif str_find(include_tag, [[ssl-verify="true"]], 1, true) ~= nil then
+                    ssl_verify = true
                 end
 
                 local ok, err = httpc:ssl_handshake(false, host, ssl_verify)
