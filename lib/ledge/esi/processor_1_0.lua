@@ -835,7 +835,7 @@ function _M.get_process_filter(self, res)
                             -- TODO: What if the attribute order is different?
                             local from, to, err = ngx_re_find(
                                 chunk,
-                                [[<esi:include\s*(src="[^"]+"\s*(ssl-verify="(true|false)"\s*)?/>]],
+                                [[<esi:include\s*(src="[^"]+")\s*(ssl-verify="(true|false)"\s*)?/>]],
                                 "oj",
                                 re_ctx
                             )
