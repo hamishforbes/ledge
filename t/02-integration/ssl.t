@@ -462,6 +462,7 @@ GET /esi_ssl_entry
 --- raw_response_headers_unlike: Surrogate-Control: content="ESI/1.0\"\r\n
 --- response_body
 1
+FRAGMENT: 1|https
 2
 FRAGMENT: 2|https
 3
