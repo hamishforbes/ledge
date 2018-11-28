@@ -2,10 +2,13 @@ local setmetatable = setmetatable
 local co_yield = coroutine.yield
 
 local ngx_get_phase = ngx.get_phase
+local ngx_log = ngx.log
+local ngx_ERR = ngx.ERR
 
 local tbl_copy_merge_defaults = require("ledge.util").table.copy_merge_defaults
 local fixed_field_metatable = require("ledge.util").mt.fixed_field_metatable
 
+local put_background_job = require("ledge.background").put_background_job
 
 local _M = {
     _VERSION = "2.1.3",
@@ -75,6 +78,32 @@ local function run(self)
         reserver = "ordered",
         queues = { "ledge_revalidate" },
     }))
+
+    -- TODO: configurable interval/concurrency
+    assert(ql_worker:start({
+        interval = 30,
+        concurrency = 1,
+        reserver = "ordered",
+        queues = { "ledge_housekeeping" },
+    }))
+
+    -- Make sure the housekeeping job is scheduled
+     local job, err = ngx.timer.at(0, function(premature)
+        put_background_job(
+            "ledge_housekeeping",
+            "ledge.jobs.prune_global_tags",
+            {
+                keyspace_scan_count = 50 -- TODO: configurable
+            },
+            {
+                jid = "prune_global_tags",
+                tags = { "prune_global_tags" },
+                priority = 1,
+            },
+            3600 -- recur - TODO : configurable
+        )
+    end)
+    if err then ngx_log(ngx_ERR, err) end
 
     return true
 end

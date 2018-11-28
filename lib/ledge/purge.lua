@@ -24,6 +24,7 @@ local fixed_field_metatable = require("ledge.util").mt.fixed_field_metatable
 local put_background_job = require("ledge.background").put_background_job
 
 local key_chain = require("ledge.cache_key").key_chain
+local generate_tag_key = require("ledge.cache_tag").generate_tag_key
 
 local _M = {
     _VERSION = "2.1.3",
@@ -108,6 +109,7 @@ local function expire_keys(redis, storage, key_chain, entity_id)
 end
 _M.expire_keys = expire_keys
 
+
 -- Purges the cache item according to purge_mode which defaults to "invalidate".
 -- If there's nothing to do we return false which results in a 404.
 -- @param   table   handler instance
@@ -159,9 +161,10 @@ local function _purge(handler, purge_mode, key_chain)
 
     end
 end
+_M._purge = _purge
 
 
-local function key_chain_from_full_key(root_key, full_key)
+local function key_chain_from_full_key(full_key, root_key)
     local pos = str_find(full_key, "#")
     if pos == nil then
         return nil
@@ -171,8 +174,13 @@ local function key_chain_from_full_key(root_key, full_key)
     local vary_key = str_sub(full_key, pos+1)
     local vary_spec = {} -- We don't need this
 
+    if not root_key then
+        root_key = str_sub(full_key, 1, pos-1)
+    end
+
     return key_chain(root_key, vary_key, vary_spec)
 end
+_M.key_chain_from_full_key = key_chain_from_full_key
 
 
 -- Purges all representatinos of the cache item
@@ -193,7 +201,7 @@ local function purge(handler, purge_mode, repset)
 
     local key_chain
     for _, full_key in ipairs(representations) do
-        key_chain = key_chain_from_full_key(root_key, full_key)
+        key_chain = key_chain_from_full_key(full_key, root_key)
         local ok, message, job = _purge(handler, purge_mode, key_chain)
 
         -- Set the overall response if any representation was purged
@@ -246,6 +254,34 @@ end
 _M.purge_in_background = purge_in_background
 
 
+local function purge_cache_tag(handler, purge_mode, cache_tag)
+    local tag_key = generate_tag_key(cache_tag)
+
+    local job, err = put_background_job(
+        "ledge_purge",
+        "ledge.jobs.purge_cache_tag",
+        {
+            cache_tag = cache_tag,
+            tag_key = tag_key,
+            keyspace_scan_count = handler.config.keyspace_scan_count,
+            purge_mode = purge_mode,
+            storage_driver = handler.config.storage_driver,
+            storage_driver_config = handler.config.storage_driver_config,
+        },
+        {
+            jid = ngx_md5("purge_cache_tag:"..tag_key),
+            tags = { "purge_cache_tag" },
+            priority = 5,
+        }
+    )
+    if err then ngx_log(ngx_ERR, err) end
+
+    return job
+end
+_M.purge_cache_tag = purge_cache_tag
+
+
+
 local function parse_json_req()
     ngx.req.read_body()
     local body, err = ngx.req.get_body_data()
@@ -264,16 +300,29 @@ end
 
 local function validate_api_request(req)
     local uris = req["uris"]
-    if not uris then
-        return false, "No URIs provided"
+    local tags = req["cache_tags"]
+
+    if not tags and not uris then
+        return false, "URIs or Cache Tags are required"
     end
 
-    if type(uris) ~= "table" then
-        return false, "Field 'uris' must be an array"
+    if tags then
+        if type(tags) ~= "table" then
+            return false, "Field 'cache_tags' must be an array"
+        end
+        if #tags == 0 then
+            return false, "No Cache Tags provided"
+        end
     end
 
-    if #uris == 0 then
-        return false, "No URIs provided"
+    if uris then
+        if type(uris) ~= "table" then
+            return false, "Field 'uris' must be an array"
+        end
+
+        if #uris == 0 then
+            return false, "No URIs provided"
+        end
     end
 
     local mode = req["purge_mode"]
@@ -367,15 +416,25 @@ local function purge_api(handler)
     local api_results = {}
 
     local uris = request["uris"]
-    for _, uri in ipairs(uris) do
-        local res, err = send_purge_request(uri, purge_mode, request["headers"])
-        if not res then
-            res = {["error"] = err}
-        elseif type(res) == "table" then
-            res["purge_mode"] = nil
-        end
+    if uris then
+        for _, uri in ipairs(uris) do
+            local res, err = send_purge_request(uri, purge_mode, request["headers"])
+            if not res then
+                res = {["error"] = err}
+            elseif type(res) == "table" then
+                res["purge_mode"] = nil
+            end
 
-        api_results[uri] = res
+            api_results[uri] = res
+        end
+    end
+
+    local tags = request["cache_tags"]
+    if tags then
+        api_results["cache_tags"] = {}
+        for _, tag in ipairs(tags) do
+            api_results["cache_tags"][tag] = purge_cache_tag(handler, purge_mode, tag)
+        end
     end
 
     local api_response, err = create_purge_response(purge_mode, api_results)

@@ -6,7 +6,7 @@ local _M = {
     _VERSION = "2.1.3",
 }
 
-local function put_background_job( queue, klass, data, options)
+local function put_background_job( queue, klass, data, options, recur)
     local q = qless.new({
         get_redis_client = require("ledge").create_qless_connection
     })
@@ -23,7 +23,13 @@ local function put_background_job( queue, klass, data, options)
     end
 
     -- Put the job
-    local res, err = q.queues[queue]:put(klass, data, options)
+    local res, err
+    if recur then
+        -- recur(self, klass, data, interval, options)
+        res, err = q.queues[queue]:recur(klass, data, recur, options)
+    else
+        res, err = q.queues[queue]:put(klass, data, options)
+    end
 
     q:redis_close()
 

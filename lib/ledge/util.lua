@@ -166,6 +166,29 @@ end
 _M.table.copy = tbl_copy
 
 
+local function deduplicate_table(table)
+    -- Can't have duplicates if there's 1 or 0 entries!
+    if #table <= 1 then
+        return table
+    end
+
+    local new_table = {}
+    local unique = {}
+    local i = 0
+
+    for _,v in ipairs(table) do
+        if not unique[v] then
+            unique[v] = true
+            i = i +1
+            new_table[i] = v
+        end
+    end
+
+    return new_table
+end
+_M.table.deduplicate = deduplicate_table
+
+
 -- Returns a new table, recursively copied from the combination of the given
 -- table `t1`, with any missing fields copied from `defaults`.
 --
@@ -238,6 +261,7 @@ local function append_server_port(name)
     return name
 end
 _M.append_server_port = append_server_port
+
 
 
 return _M

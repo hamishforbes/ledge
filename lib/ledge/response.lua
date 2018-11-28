@@ -29,6 +29,9 @@ local ngx_re_find = ngx.re.find
 local ngx_re_gsub = ngx.re.gsub
 
 local header_has_directive = require("ledge.header_util").header_has_directive
+local deduplicate_table = util.table.deduplicate
+
+local ledge_cache_tags = require("ledge.cache_tag")
 
 local get_fixed_field_metatable_proxy =
     require("ledge.util").mt.get_fixed_field_metatable_proxy
@@ -72,6 +75,7 @@ function _M.new(handler)
         remaining_ttl = 0,
         has_esi = false,
         esi_scanned = false,
+        cache_tags = {},
 
         -- body
         entity_id = "",
@@ -428,6 +432,12 @@ function _M.save(self, keep_cache_for)
     ok, err = redis:expire(key_chain.entities, expiry)
     if not ok then ngx_log(ngx_ERR, err) end
 
+
+    local ok, err = ledge_cache_tags.save(redis, key_chain.full, self.cache_tags)
+    if not ok then
+        ngx_log(ngx_ERR, "error saving cache tags: ", err)
+    end
+
     return true
 end
 
@@ -461,28 +471,6 @@ function _M.add_warning(self, code, name)
     local header = code .. ' ' .. name
     header = header .. ' "' .. WARNINGS[code] .. '"'
     tbl_insert(self.header["Warning"], header)
-end
-
-
-local function deduplicate_table(table)
-    -- Can't have duplicates if there's 1 or 0 entries!
-    if #table <= 1 then
-        return table
-    end
-
-    local new_table = {}
-    local unique = {}
-    local i = 0
-
-    for _,v in ipairs(table) do
-        if not unique[v] then
-            unique[v] = true
-            i = i +1
-            new_table[i] = v
-        end
-    end
-
-    return new_table
 end
 
 

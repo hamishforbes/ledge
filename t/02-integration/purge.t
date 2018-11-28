@@ -1162,7 +1162,7 @@ result.foobar.error: bad uri: foobar
 ",
 "error: Could not parse request body: Expected value but found invalid token at character 1
 ",
-"error: No URIs provided
+"error: URIs or Cache Tags are required
 ",
 "error: No URIs provided
 ",

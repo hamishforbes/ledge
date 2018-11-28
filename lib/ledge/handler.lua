@@ -32,6 +32,7 @@ local esi_capabilities = require("ledge.esi").esi_capabilities
 local append_server_port = require("ledge.util").append_server_port
 
 local ledge_cache_key = require("ledge.cache_key")
+local ledge_cache_tags = require("ledge.cache_tag")
 
 local req_relative_uri = require("ledge.request").relative_uri
 local req_full_uri = require("ledge.request").full_uri
@@ -508,6 +509,8 @@ local function fetch_from_origin(self)
             res.header["Date"] = ngx_http_time(ngx_time())
         end
     end
+
+    res.cache_tags = ledge_cache_tags.parse(res.header["Cache-Tags"])
 
     -- A nice opportunity for post-fetch / pre-save work.
     emit(self, "after_upstream_request", res)
